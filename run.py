@@ -12,6 +12,8 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from config import cfg
+import cv2
 try:
     from .correlation import correlation  # the custom cost volume layer
 except:
@@ -594,9 +596,9 @@ if __name__ == '__main__':
     # imgSetFolder = sys.argv[1]
     # resFolder = sys.argv[2]
     # dataInfoPath = sys.argv[3]
-    imgSetFolder = "/home/zqr/codes/data/golfdb_frame_no_resize"
-    resFolder = "/home/zqr/codes/data/golfdb_flow_no_resize"
-    dataInfoPath = "/home/zqr/codes/data/data_info.txt"
+    imgSetFolder = cfg.INPUT_FOLDER
+    resFolder = cfg.OPTICAL_FOLDER
+    dataInfoPath = cfg.DATA_INFO_PATH
     if os.path.exists(dataInfoPath):
         os.remove(dataInfoPath)
     dataInfoFile = open(dataInfoPath, 'w')
@@ -617,24 +619,46 @@ if __name__ == '__main__':
         for i in range(len(imgNames) - 1):
             strFirst = os.path.join(imgsDir, "%04d.jpg" % (i))
             strSecond = os.path.join(imgsDir, "%04d.jpg" % (i + 1))
-            opticalFlowRes = os.path.join(
-                videoOpticalDir, "%04d.flo" % (i + 1))
             tenFirst = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(
                 strFirst))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
             tenSecond = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(
                 strSecond))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
 
             tenOutput = estimate(tenFirst, tenSecond)
+            # 如果flag为0，保存为光流图片，否则的话保存为flo文件
+            if cfg.FLAG == 0:
+                img_size = tenOutput.shape[1:3]
+                img_array = tenOutput.numpy().transpose(1, 2, 0)
+                img_array = img_array.reshape(img_size[0], img_size[1], 2)
+                optical_img = flow_to_image(img_array)
+                # 以下注释部分可以用来直接resize图片
+                # img_size = optical_img.shape[:2]
+                # ratio = cfg.REZISE_DIM / max(img_size)
+                # new_size = tuple([int(x*ratio) for x in img_size])
+                # resized = cv2.resize(optical_img, (new_size[1], new_size[0]))
+                # delta_w = cfg.REZISE_DIM - new_size[1]
+                # delta_h = cfg.REZISE_DIM - new_size[0]
+                # top, bottom = delta_h // 2, delta_h - (delta_h // 2)
+                # left, right = delta_w // 2, delta_w - (delta_w // 2)
 
-            # objOutput = open(arguments_strOut, 'wb')
-            objOutput = open(opticalFlowRes, 'wb')
+                # b_img = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT,
+                #                            value=[0, 0, 0])  # ImageNet means (BGR)
+                # im = Image.fromarray(b_img)
+                # im.save(os.path.join(videoOpticalDir, "%04d." % (i + 1)))
+                im = Image.fromarray(optical_img)
+                im.save(os.path.join(videoOpticalDir, "%04d.jpg" % (i + 1)))
 
-            numpy.array([80, 73, 69, 72], numpy.uint8).tofile(objOutput)
-            numpy.array([tenOutput.shape[2], tenOutput.shape[1]],
-                        numpy.int32).tofile(objOutput)
-            numpy.array(tenOutput.numpy().transpose(1, 2, 0),
-                        numpy.float32).tofile(objOutput)
-            objOutput.close()
+            else:
+                # TODO:可能后就不用flo文件这种保存方式了，以为太占用空间了
+                opticalFlowRes = os.path.join(
+                    videoOpticalDir, "%04d.flo" % (i + 1))
+                objOutput = open(opticalFlowRes, 'wb')
+                numpy.array([80, 73, 69, 72], numpy.uint8).tofile(objOutput)
+                numpy.array([tenOutput.shape[2], tenOutput.shape[1]],
+                            numpy.int32).tofile(objOutput)
+                numpy.array(tenOutput.numpy().transpose(1, 2, 0),
+                            numpy.float32).tofile(objOutput)
+                objOutput.close()
         dataInfoFile.write(videoOpticalDir)
         dataInfoFile.write('\n')
         print("process videos_" + str(imgDirs[idx]))
